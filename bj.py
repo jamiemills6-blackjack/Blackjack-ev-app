@@ -1,73 +1,53 @@
-# bj.py -- Robust Single-File Blackjack Assistant (mobile-friendly single keypad)
+# bj.py -- Mobile-friendly Blackjack Assistant
 import streamlit as st
 
 # ---------------------------
-#  Session Initialization
+# Session Initialization
 # ---------------------------
 st.set_page_config(page_title="Blackjack Assistant", layout="centered")
 st.markdown("<h1 style='text-align:center; font-size:150%;'>Blackjack Assistant</h1>", unsafe_allow_html=True)
 
 # Persistent state
-if "shoe" not in st.session_state:
-    st.session_state.shoe = []
-if "pending_player" not in st.session_state:
-    st.session_state.pending_player = []
-if "pending_others" not in st.session_state:
-    st.session_state.pending_others = []
-if "pending_dealer" not in st.session_state:
-    st.session_state.pending_dealer = []
-if "active_box" not in st.session_state:
-    st.session_state.active_box = "player"
-if "running_count" not in st.session_state:
-    st.session_state.running_count = 0
-if "true_count" not in st.session_state:
-    st.session_state.true_count = 0.0
-if "penetration" not in st.session_state:
-    st.session_state.penetration = 0.0
-if "ev" not in st.session_state:
-    st.session_state.ev = 0.0
-if "recommendation" not in st.session_state:
-    st.session_state.recommendation = ""
-if "_last_committed_player" not in st.session_state:
-    st.session_state._last_committed_player = []
-if "num_decks" not in st.session_state:
-    st.session_state.num_decks = 8
+state_keys = [
+    "shoe","pending_player","pending_others","pending_dealer","active_box",
+    "running_count","true_count","penetration","ev","recommendation",
+    "_last_committed_player","num_decks"
+]
+defaults = [[],[],[],[],"player",0,0.0,0.0,0.0,"",[],8]
+for key, default in zip(state_keys, defaults):
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 # ---------------------------
-#  Card values and Hi-Lo
+# Card values and Hi-Lo
 # ---------------------------
-CARD_VALUES = {
-    'A': [1, 11], '2': [2], '3': [3], '4': [4], '5': [5], '6': [6],
-    '7': [7], '8': [8], '9': [9], '10': [10]
-}
-HI_LO = {'2': 1, '3': 1, '4': 1, '5': 1, '6': 1,
-         '7': 0, '8': 0, '9': 0, '10': -1, 'A': -1}
+CARD_VALUES = {'A':[1,11],'2':[2],'3':[3],'4':[4],'5':[5],'6':[6],'7':[7],'8':[8],'9':[9],'10':[10]}
+HI_LO = {'2':1,'3':1,'4':1,'5':1,'6':1,'7':0,'8':0,'9':0,'10':-1,'A':-1}
 
 def best_hand_value(cards):
     totals = [0]
     for c in cards:
-        vals = CARD_VALUES.get(c, [0])
-        totals = [t + v for t in totals for v in vals]
-    under = [t for t in totals if t <= 21]
+        vals = CARD_VALUES.get(c,[0])
+        totals = [t+v for t in totals for v in vals]
+    under = [t for t in totals if t<=21]
     return max(under) if under else min(totals)
 
 def is_soft(cards):
-    if 'A' not in cards:
-        return False
+    if 'A' not in cards: return False
     totals = [0]
     for c in cards:
-        vals = CARD_VALUES.get(c, [0])
-        totals = [t + v for t in totals for v in vals]
-    return any(t <= 21 and t != min(totals) for t in totals)
+        vals = CARD_VALUES.get(c,[0])
+        totals = [t+v for t in totals for v in vals]
+    return any(t<=21 and t!=min(totals) for t in totals)
 
 def compute_running_count_from_cards(card_list):
-    return sum(HI_LO.get(c, 0) for c in card_list)
+    return sum(HI_LO.get(c,0) for c in card_list)
 
 # ---------------------------
-#  Display pending boxes
+# Display pending boxes
 # ---------------------------
-def box_display(title, cards, is_active=False):
-    style = "border:2px solid #444; padding:8px; border-radius:6px;" if is_active else "border:1px solid #aaa; padding:8px; border-radius:6px;"
+def box_display(title, cards, active=False):
+    style = "border:2px solid #444; padding:8px; border-radius:6px;" if active else "border:1px solid #aaa; padding:8px; border-radius:6px;"
     st.markdown(f"**{title}**")
     st.markdown(f"<div style='{style}; min-height:28px;'>{' '.join(cards) if cards else '<span style=color:#777>None</span>'}</div>", unsafe_allow_html=True)
 
@@ -79,27 +59,17 @@ st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
 # ---------------------------
-#  Keypad 4x4 grid
+# 4x4 Keypad (mobile-friendly)
 # ---------------------------
-key_list = ['2','3','4','5','6','7','8','9','10','A','Delete','Enter']
-key_list += [''] * (16 - len(key_list))  # pad to 16
+key_list = ['2','3','4','5','6','7','8','9','10','A','Delete','Enter'] + ['']*4
 st.markdown("""
-<style>
-.keypad-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap:6px; }
-.keypad-grid button { padding:10px 6px; font-size:18px; border-radius:8px; }
-</style>
+<div style='display:grid; grid-template-columns: repeat(4, 1fr); gap:6px;'>
 """, unsafe_allow_html=True)
 
-for row in range(4):
-    cols = st.columns(4, gap="small")
-    for col_idx in range(4):
-        idx = row*4 + col_idx
-        label = key_list[idx]
-        if label == "":
-            cols[col_idx].markdown("&nbsp;")
-            continue
-        btn_key = f"kp_{idx}_{label}"
-        if cols[col_idx].button(label, key=btn_key):
+for idx, key in enumerate(key_list):
+    if key:
+        btn_key = f"kp_{idx}_{key}"
+        if st.button(key, key=btn_key):
             active = st.session_state.active_box
             pending_map = {
                 "player": st.session_state.pending_player,
@@ -107,33 +77,30 @@ for row in range(4):
                 "dealer": st.session_state.pending_dealer
             }
             pending = pending_map[active]
-            if label == "Delete":
-                if pending:
-                    pending.pop()
-            elif label == "Enter":
+            if key=="Delete":
+                if pending: pending.pop()
+            elif key=="Enter":
                 if pending:
                     st.session_state.shoe.extend(pending)
-                    if active=="player":
-                        st.session_state._last_committed_player = pending.copy()
+                    if active=="player": st.session_state._last_committed_player = pending.copy()
                     pending.clear()
                 # cycle active box
-                if active=="player":
-                    st.session_state.active_box="other"
-                elif active=="other":
-                    st.session_state.active_box="dealer"
-                else:
-                    st.session_state.active_box="player"
+                if active=="player": st.session_state.active_box="other"
+                elif active=="other": st.session_state.active_box="dealer"
+                else: st.session_state.active_box="player"
             else:
-                pending.append(label)
+                pending.append(key)
+    else:
+        st.markdown("<div>&nbsp;</div>", unsafe_allow_html=True)
 
+st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
 # ---------------------------
-#  Action buttons
+# Action buttons
 # ---------------------------
 c1,c2,c3 = st.columns(3)
 
-# Calculate
 if c1.button("Calculate", key="btn_calculate"):
     combined = st.session_state.shoe + st.session_state.pending_player + st.session_state.pending_others + st.session_state.pending_dealer
     running = compute_running_count_from_cards(combined)
@@ -143,7 +110,6 @@ if c1.button("Calculate", key="btn_calculate"):
     rem_decks = max(0.0001, rem_cards/52)
     true = running / rem_decks
     pen = seen/(decks*52)
-    # Player hand fallback
     player_hand = st.session_state.pending_player.copy() if st.session_state.pending_player else st.session_state._last_committed_player.copy()
     dealer_up = st.session_state.pending_dealer[0] if st.session_state.pending_dealer else (st.session_state.shoe[0] if st.session_state.shoe else None)
     rec = recommend_basic_strategy(player_hand,dealer_up) if player_hand else "No player hand entered"
@@ -154,42 +120,33 @@ if c1.button("Calculate", key="btn_calculate"):
     st.session_state.ev = round(ev_proxy,5)
     st.session_state.recommendation = rec
 
-# Next Hand
 if c2.button("Next Hand", key="btn_next_hand"):
     for box in ["pending_player","pending_others","pending_dealer"]:
         pending = st.session_state[box]
         if pending:
             st.session_state.shoe.extend(pending)
-            if box=="pending_player":
-                st.session_state._last_committed_player = pending.copy()
+            if box=="pending_player": st.session_state._last_committed_player = pending.copy()
             pending.clear()
     st.session_state.active_box="player"
 
-# New Shoe
 if c3.button("New Shoe", key="btn_new_shoe"):
     for k in ["shoe","pending_player","pending_others","pending_dealer"]:
         st.session_state[k]=[]
-    st.session_state.running_count = 0
-    st.session_state.true_count = 0.0
-    st.session_state.penetration = 0.0
-    st.session_state.ev = 0.0
-    st.session_state.recommendation = ""
+    st.session_state.running_count=0
+    st.session_state.true_count=0.0
+    st.session_state.penetration=0.0
+    st.session_state.ev=0.0
+    st.session_state.recommendation=""
     st.session_state._last_committed_player=[]
     st.session_state.active_box="player"
 
 st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
 # ---------------------------
-#  Count Info expander
+# Count Info Expander
 # ---------------------------
 with st.expander("Count Info"):
-    st.number_input(
-        "Number of decks",
-        min_value=1,
-        max_value=16,
-        value=int(st.session_state.num_decks),
-        key="num_decks"
-    )
+    st.number_input("Number of decks", min_value=1, max_value=16, value=int(st.session_state.num_decks), key="num_decks")
     st.markdown(f"**EV (proxy):** {st.session_state.ev}")
     st.markdown(f"**True Count:** {st.session_state.true_count:.2f}")
     st.markdown(f"**Running Count:** {st.session_state.running_count}")
@@ -198,23 +155,19 @@ with st.expander("Count Info"):
     st.markdown(f"**Committed cards in shoe:** {len(st.session_state.shoe)}")
 
 # ---------------------------
-#  Recommendation display (color-coded)
+# Recommendation Display
 # ---------------------------
 rec = st.session_state.get("recommendation","")
 if rec:
-    color = "black"
-    if rec.lower().startswith("hit"):
-        color="crimson"
-    elif rec.lower().startswith("stand"):
-        color="green"
-    elif rec.lower().startswith("split"):
-        color="navy"
-    elif rec.lower().startswith("double"):
-        color="orange"
+    color="black"
+    if rec.lower().startswith("hit"): color="crimson"
+    elif rec.lower().startswith("stand"): color="green"
+    elif rec.lower().startswith("split"): color="navy"
+    elif rec.lower().startswith("double"): color="orange"
     st.markdown(f"<div style='font-weight:600; padding:8px; border-radius:6px; text-align:center; color:{color};'>{rec}</div>", unsafe_allow_html=True)
 
 # ---------------------------
-#  Basic Strategy Helper
+# Basic Strategy Helper
 # ---------------------------
 def recommend_basic_strategy(player_cards,dealer_up):
     if not player_cards: return "No hand"
@@ -227,20 +180,13 @@ def recommend_basic_strategy(player_cards,dealer_up):
     total = best_hand_value(player_cards)
     # Pairs
     if pair:
-        if pc in ['A','8']:
-            return "Split"
-        if pc in ['2','3']:
-            return "Split" if du in ['2','3','4','5','6','7'] else "Hit"
-        if pc=='6':
-            return "Split" if du in ['2','3','4','5','6'] else "Hit"
-        if pc=='7':
-            return "Split" if du in ['2','3','4','5','6','7','8'] else "Hit"
-        if pc=='9':
-            return "Split" if du in ['2','3','4','5','6','8','9'] else "Stand"
-        if pc=='4':
-            return "Split" if du in ['5','6'] else "Hit"
-        if pc=='10':
-            return "Stand"
+        if pc in ['A','8']: return "Split"
+        if pc in ['2','3']: return "Split" if du in ['2','3','4','5','6','7'] else "Hit"
+        if pc=='6': return "Split" if du in ['2','3','4','5','6'] else "Hit"
+        if pc=='7': return "Split" if du in ['2','3','4','5','6','7','8'] else "Hit"
+        if pc=='9': return "Split" if du in ['2','3','4','5','6','8','9'] else "Stand"
+        if pc=='4': return "Split" if du in ['5','6'] else "Hit"
+        if pc=='10': return "Stand"
     # Soft totals
     if soft:
         if total>=19: return "Stand"
