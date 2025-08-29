@@ -1,22 +1,22 @@
-# bj.py -- Mobile-friendly Blackjack Assistant
+# bj.py -- Blackjack Assistant with HTML/JS keypad
 import streamlit as st
+import streamlit.components.v1 as components
 
 # ---------------------------
-# Session Initialization
+# Session state initialization
 # ---------------------------
+defaults = {
+    "shoe": [], "pending_player": [], "pending_others": [], "pending_dealer": [],
+    "active_box": "player", "running_count":0, "true_count":0.0,
+    "penetration":0.0, "ev":0.0, "recommendation":"", "_last_committed_player":[],
+    "num_decks":8, "last_key": None
+}
+for key, val in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = val
+
 st.set_page_config(page_title="Blackjack Assistant", layout="centered")
 st.markdown("<h1 style='text-align:center; font-size:150%;'>Blackjack Assistant</h1>", unsafe_allow_html=True)
-
-# Persistent state
-state_keys = [
-    "shoe","pending_player","pending_others","pending_dealer","active_box",
-    "running_count","true_count","penetration","ev","recommendation",
-    "_last_committed_player","num_decks"
-]
-defaults = [[],[],[],[],"player",0,0.0,0.0,0.0,"",[],8]
-for key, default in zip(state_keys, defaults):
-    if key not in st.session_state:
-        st.session_state[key] = default
 
 # ---------------------------
 # Card values and Hi-Lo
@@ -59,45 +59,53 @@ st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
 # ---------------------------
-# 4x4 Keypad (mobile-friendly)
+# HTML/JS Keypad embedded
 # ---------------------------
-key_list = ['2','3','4','5','6','7','8','9','10','A','Delete','Enter'] + ['']*4
-st.markdown("""
-<div style='display:grid; grid-template-columns: repeat(4, 1fr); gap:6px;'>
-""", unsafe_allow_html=True)
-
-for idx, key in enumerate(key_list):
-    if key:
-        btn_key = f"kp_{idx}_{key}"
-        if st.button(key, key=btn_key):
-            active = st.session_state.active_box
-            pending_map = {
-                "player": st.session_state.pending_player,
-                "other": st.session_state.pending_others,
-                "dealer": st.session_state.pending_dealer
-            }
-            pending = pending_map[active]
-            if key=="Delete":
-                if pending: pending.pop()
-            elif key=="Enter":
-                if pending:
-                    st.session_state.shoe.extend(pending)
-                    if active=="player": st.session_state._last_committed_player = pending.copy()
-                    pending.clear()
-                # cycle active box
-                if active=="player": st.session_state.active_box="other"
-                elif active=="other": st.session_state.active_box="dealer"
-                else: st.session_state.active_box="player"
-            else:
-                pending.append(key)
+keys = ['2','3','4','5','6','7','8','9','10','A','Delete','Enter']
+keypad_html = "<div style='display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; max-width:300px;'>"
+for k in keys + ['','','','']:  # pad to 16 cells
+    if k:
+        keypad_html += f"<button onclick=\"window.parent.postMessage({{'key':'{k}'}}, '*')\" style='padding:12px; font-size:18px; border-radius:8px; width:100%;'>{k}</button>"
     else:
-        st.markdown("<div>&nbsp;</div>", unsafe_allow_html=True)
-
-st.markdown("</div>", unsafe_allow_html=True)
-st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        keypad_html += "<div>&nbsp;</div>"
+keypad_html += "</div>"
+components.html(keypad_html, height=300)
 
 # ---------------------------
-# Action buttons
+# Capture key presses via JS
+# ---------------------------
+from streamlit.runtime.scriptrunner import add_script_run_ctx
+import json
+
+if "key_events" not in st.session_state:
+    st.session_state.key_events = []
+
+# JS messages are captured as a temporary session state variable
+if st.session_state.get("last_key"):
+    key = st.session_state.last_key
+    st.session_state.last_key = None
+    active = st.session_state.active_box
+    pending_map = {
+        "player": st.session_state.pending_player,
+        "other": st.session_state.pending_others,
+        "dealer": st.session_state.pending_dealer
+    }
+    pending = pending_map[active]
+    if key=="Delete":
+        if pending: pending.pop()
+    elif key=="Enter":
+        if pending:
+            st.session_state.shoe.extend(pending)
+            if active=="player": st.session_state._last_committed_player = pending.copy()
+            pending.clear()
+        if active=="player": st.session_state.active_box="other"
+        elif active=="other": st.session_state.active_box="dealer"
+        else: st.session_state.active_box="player"
+    else:
+        pending.append(key)
+
+# ---------------------------
+# Action Buttons
 # ---------------------------
 c1,c2,c3 = st.columns(3)
 
@@ -140,8 +148,6 @@ if c3.button("New Shoe", key="btn_new_shoe"):
     st.session_state._last_committed_player=[]
     st.session_state.active_box="player"
 
-st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-
 # ---------------------------
 # Count Info Expander
 # ---------------------------
@@ -178,7 +184,6 @@ def recommend_basic_strategy(player_cards,dealer_up):
         pc = player_cards[0]
     soft = is_soft(player_cards)
     total = best_hand_value(player_cards)
-    # Pairs
     if pair:
         if pc in ['A','8']: return "Split"
         if pc in ['2','3']: return "Split" if du in ['2','3','4','5','6','7'] else "Hit"
@@ -187,12 +192,10 @@ def recommend_basic_strategy(player_cards,dealer_up):
         if pc=='9': return "Split" if du in ['2','3','4','5','6','8','9'] else "Stand"
         if pc=='4': return "Split" if du in ['5','6'] else "Hit"
         if pc=='10': return "Stand"
-    # Soft totals
     if soft:
         if total>=19: return "Stand"
         if total==18: return "Stand" if du not in ['9','10','A'] else "Hit"
         return "Hit"
-    # Hard totals
     if total>=17: return "Stand"
     if 13<=total<=16: return "Stand" if du in ['2','3','4','5','6'] else "Hit"
     if total==12: return "Stand" if du in ['4','5','6'] else "Hit"
