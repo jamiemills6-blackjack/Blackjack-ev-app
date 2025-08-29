@@ -44,7 +44,7 @@ def compute_running_count_from_cards(card_list):
     return sum(HI_LO.get(c,0) for c in card_list)
 
 # ---------------------------
-# Display pending boxes
+# Display boxes
 # ---------------------------
 def box_display(title, cards, active=False):
     style = "border:2px solid #444; padding:8px; border-radius:6px;" if active else "border:1px solid #aaa; padding:8px; border-radius:6px;"
@@ -64,13 +64,10 @@ st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 st.text_input("hidden_key_capture", value=st.session_state.last_key, key="hidden_input", label_visibility="collapsed")
 
 # ---------------------------
-# HTML/JS Keypad (centered, smaller Enter/Delete font)
+# HTML/JS Keypad
 # ---------------------------
 keys = ['2','3','4','5','6','7','8','9','10','A','Delete','Enter']
-keypad_html = """
-<div style='display:flex; justify-content:center; margin-bottom:6px;'>
-<div style='display:grid; grid-template-columns: repeat(4, 60px); gap:6px;'>
-"""
+keypad_html = "<div style='display:flex; justify-content:center; margin-bottom:6px;'><div style='display:grid; grid-template-columns: repeat(4, 60px); gap:6px;'>"
 for k in keys + ['','','','']:  # pad to 16 cells
     if k:
         size = '14px' if k in ['Delete','Enter'] else '18px'
@@ -104,10 +101,10 @@ if key:
         else: st.session_state.active_box="player"
     else:
         pending.append(key)
-    st.session_state.last_key = ""  # reset
+    st.session_state.last_key = ""
 
 # ---------------------------
-# Action Buttons below keypad
+# Action Buttons
 # ---------------------------
 c1,c2,c3 = st.columns([1,1,1])
 if c1.button("Calculate"):
@@ -125,7 +122,7 @@ if c1.button("Calculate"):
     st.session_state.running_count = running
     st.session_state.true_count = true
     st.session_state.penetration = pen
-    st.session_state.ev = round(true*0.5/100,5)  # simple EV%
+    st.session_state.ev = round(true*0.5/100,5)
     st.session_state.recommendation = rec
 
 if c2.button("Next Hand"):
@@ -180,15 +177,30 @@ if rec:
 # ---------------------------
 # Basic Strategy Helper
 # ---------------------------
-def recommend_basic_strategy(player_cards,dealer_up):
+def recommend_basic_strategy(player_cards, dealer_up):
     if not player_cards: return "No hand"
     du = dealer_up
-    pair=False
-    if len(player_cards)==2 and player_cards[0]==player_cards[1]:
-        pair=True
+    pair = False
+    if len(player_cards) == 2 and player_cards[0] == player_cards[1]:
+        pair = True
         pc = player_cards[0]
     soft = is_soft(player_cards)
     total = best_hand_value(player_cards)
     if pair:
         if pc in ['A','8']: return "Split"
-        if pc in ['2','3']: return "Split" if du in ['2','3','4
+        if pc in ['2','3']: return "Split" if du in ['2','3','4','5','6','7'] else "Hit"
+        if pc == '6': return "Split" if du in ['2','3','4','5','6'] else "Hit"
+        if pc == '7': return "Split" if du in ['2','3','4','5','6','7','8'] else "Hit"
+        if pc == '9': return "Split" if du in ['2','3','4','5','6','8','9'] else "Stand"
+        if pc == '4': return "Split" if du in ['5','6'] else "Hit"
+        if pc == '5': total = 10
+        if pc == '10': return "Stand"
+    if soft:
+        if total >= 19: return "Stand"
+        if total == 18: return "Stand" if du not in ['9','10','A'] else "Hit"
+        return "Hit"
+    if total >= 17: return "Stand"
+    if 13 <= total <= 16: return "Stand" if du in ['2','3','4','5','6'] else "Hit"
+    if total == 12: return "Stand" if du in ['4','5','6'] else "Hit"
+    if total <= 11: return "Hit"
+    return "Stand"
