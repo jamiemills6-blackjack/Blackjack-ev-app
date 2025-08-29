@@ -71,7 +71,7 @@ keypad_html = """
 <div style='display:flex; justify-content:center; margin-bottom:6px;'>
 <div style='display:grid; grid-template-columns: repeat(4, 60px); gap:6px;'>
 """
-for k in keys + ['','','','']:
+for k in keys + ['','','','']:  # pad to 16 cells
     if k:
         size = '14px' if k in ['Delete','Enter'] else '18px'
         keypad_html += f"""<button onclick="document.getElementById('hidden_input').value='{k}';
@@ -165,8 +165,30 @@ with st.expander("Count Info"):
 # ---------------------------
 rec = st.session_state.get("recommendation","")
 if rec:
-    color="black"
-    if rec.lower().startswith("hit"): color="crimson"
-    elif rec.lower().startswith("stand"): color="green"
-    elif rec.lower().startswith("split"): color="navy"
-    elif rec.lower().startswith("double"): color="
+    color = "black"
+    rec_lower = rec.lower()
+    if rec_lower.startswith("hit"):
+        color = "crimson"
+    elif rec_lower.startswith("stand"):
+        color = "green"
+    elif rec_lower.startswith("split"):
+        color = "navy"
+    elif rec_lower.startswith("double"):
+        color = "orange"
+    st.markdown(f"<div style='font-weight:600; padding:8px; border-radius:6px; text-align:center; color:{color};'>{rec}</div>", unsafe_allow_html=True)
+
+# ---------------------------
+# Basic Strategy Helper
+# ---------------------------
+def recommend_basic_strategy(player_cards,dealer_up):
+    if not player_cards: return "No hand"
+    du = dealer_up
+    pair=False
+    if len(player_cards)==2 and player_cards[0]==player_cards[1]:
+        pair=True
+        pc = player_cards[0]
+    soft = is_soft(player_cards)
+    total = best_hand_value(player_cards)
+    if pair:
+        if pc in ['A','8']: return "Split"
+        if pc in ['2','3']: return "Split" if du in ['2','3','4
