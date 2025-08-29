@@ -1,4 +1,4 @@
-# bj.py -- Blackjack Assistant with real-time keypad
+# bj.py -- Blackjack Assistant with real-time mobile-ready keypad
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -9,7 +9,7 @@ defaults = {
     "shoe": [], "pending_player": [], "pending_others": [], "pending_dealer": [],
     "active_box": "player", "running_count":0, "true_count":0.0,
     "penetration":0.0, "ev":0.0, "recommendation":"", "_last_committed_player":[],
-    "num_decks":8, "last_key": ""
+    "num_decks":8, "last_key":""
 }
 for key, val in defaults.items():
     if key not in st.session_state:
@@ -52,29 +52,35 @@ def box_display(title, cards, active=False):
     st.markdown(f"<div style='{style}; min-height:28px;'>{' '.join(cards) if cards else '<span style=color:#777>None</span>'}</div>", unsafe_allow_html=True)
 
 st.markdown("<div style='display:flex; gap:8px; flex-direction:column;'>", unsafe_allow_html=True)
-box_display("Your cards (pending)", st.session_state.pending_player, st.session_state.active_box=="player")
-box_display("Other players' cards (pending)", st.session_state.pending_others, st.session_state.active_box=="other")
-box_display("Dealer cards (pending)", st.session_state.pending_dealer, st.session_state.active_box=="dealer")
+box_display("Your cards", st.session_state.pending_player, st.session_state.active_box=="player")
+box_display("Other players' cards", st.session_state.pending_others, st.session_state.active_box=="other")
+box_display("Dealer cards", st.session_state.pending_dealer, st.session_state.active_box=="dealer")
 st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
 # ---------------------------
-# Hidden input for capturing JS key presses
+# Hidden input for JS keypad
 # ---------------------------
-st.session_state.last_key = st.text_input("hidden_key_capture", value="", key="hidden_input", label_visibility="collapsed")
+st.text_input("hidden_key_capture", value=st.session_state.last_key, key="hidden_input", label_visibility="collapsed")
 
 # ---------------------------
-# HTML/JS Keypad embedded and centered
+# HTML/JS Keypad (centered, smaller Enter/Delete font)
 # ---------------------------
 keys = ['2','3','4','5','6','7','8','9','10','A','Delete','Enter']
-keypad_html = "<div style='display:flex; justify-content:center; margin-bottom:8px;'><div style='display:grid; grid-template-columns: repeat(4, 60px); gap:6px;'>"
-for k in keys + ['','','','']:  # pad to 16 cells
+keypad_html = """
+<div style='display:flex; justify-content:center; margin-bottom:6px;'>
+<div style='display:grid; grid-template-columns: repeat(4, 60px); gap:6px;'>
+"""
+for k in keys + ['','','','']:
     if k:
-        keypad_html += f"<button onclick=\"document.getElementById('hidden_input').value='{k}';document.getElementById('hidden_input').dispatchEvent(new Event('change'))\" style='padding:12px; font-size:18px; border-radius:8px;'>{k}</button>"
+        size = '14px' if k in ['Delete','Enter'] else '18px'
+        keypad_html += f"""<button onclick="document.getElementById('hidden_input').value='{k}';
+document.getElementById('hidden_input').dispatchEvent(new Event('change'))" 
+style='padding:10px; font-size:{size}; border-radius:8px; width:60px;'>{k}</button>"""
     else:
         keypad_html += "<div>&nbsp;</div>"
 keypad_html += "</div></div>"
-components.html(keypad_html, height=320)
+components.html(keypad_html, height=300)
 
 # ---------------------------
 # Handle key press
@@ -82,11 +88,9 @@ components.html(keypad_html, height=320)
 key = st.session_state.last_key
 if key:
     active = st.session_state.active_box
-    pending_map = {
-        "player": st.session_state.pending_player,
-        "other": st.session_state.pending_others,
-        "dealer": st.session_state.pending_dealer
-    }
+    pending_map = {"player": st.session_state.pending_player,
+                   "other": st.session_state.pending_others,
+                   "dealer": st.session_state.pending_dealer}
     pending = pending_map[active]
     if key=="Delete":
         if pending: pending.pop()
@@ -95,17 +99,15 @@ if key:
             st.session_state.shoe.extend(pending)
             if active=="player": st.session_state._last_committed_player = pending.copy()
             pending.clear()
-        # cycle active box
         if active=="player": st.session_state.active_box="other"
         elif active=="other": st.session_state.active_box="dealer"
         else: st.session_state.active_box="player"
     else:
         pending.append(key)
-    # reset hidden input
-    st.session_state.last_key = ""
+    st.session_state.last_key = ""  # reset
 
 # ---------------------------
-# Action Buttons directly below keypad
+# Action Buttons below keypad
 # ---------------------------
 c1,c2,c3 = st.columns([1,1,1])
 if c1.button("Calculate"):
@@ -120,11 +122,10 @@ if c1.button("Calculate"):
     player_hand = st.session_state.pending_player.copy() if st.session_state.pending_player else st.session_state._last_committed_player.copy()
     dealer_up = st.session_state.pending_dealer[0] if st.session_state.pending_dealer else (st.session_state.shoe[0] if st.session_state.shoe else None)
     rec = recommend_basic_strategy(player_hand,dealer_up) if player_hand else "No player hand entered"
-    ev_proxy = true*0.005
     st.session_state.running_count = running
     st.session_state.true_count = true
     st.session_state.penetration = pen
-    st.session_state.ev = round(ev_proxy,5)
+    st.session_state.ev = round(true*0.5/100,5)  # simple EV%
     st.session_state.recommendation = rec
 
 if c2.button("Next Hand"):
@@ -151,8 +152,8 @@ if c3.button("New Shoe"):
 # Count Info Expander
 # ---------------------------
 with st.expander("Count Info"):
-    st.number_input("Number of decks", min_value=1, max_value=16, value=int(st.session_state.num_decks), key="num_decks")
-    st.markdown(f"**EV (proxy):** {st.session_state.ev}")
+    st.number_input("Number of decks", min_value=1, max_value=16, key="num_decks")
+    st.markdown(f"**EV:** {st.session_state.ev}")
     st.markdown(f"**True Count:** {st.session_state.true_count:.2f}")
     st.markdown(f"**Running Count:** {st.session_state.running_count}")
     st.markdown(f"**Penetration:** {st.session_state.penetration:.3f}")
@@ -168,35 +169,4 @@ if rec:
     if rec.lower().startswith("hit"): color="crimson"
     elif rec.lower().startswith("stand"): color="green"
     elif rec.lower().startswith("split"): color="navy"
-    elif rec.lower().startswith("double"): color="orange"
-    st.markdown(f"<div style='font-weight:600; padding:8px; border-radius:6px; text-align:center; color:{color};'>{rec}</div>", unsafe_allow_html=True)
-
-# ---------------------------
-# Basic Strategy Helper
-# ---------------------------
-def recommend_basic_strategy(player_cards,dealer_up):
-    if not player_cards: return "No hand"
-    du = dealer_up
-    pair=False
-    if len(player_cards)==2 and player_cards[0]==player_cards[1]:
-        pair=True
-        pc = player_cards[0]
-    soft = is_soft(player_cards)
-    total = best_hand_value(player_cards)
-    if pair:
-        if pc in ['A','8']: return "Split"
-        if pc in ['2','3']: return "Split" if du in ['2','3','4','5','6','7'] else "Hit"
-        if pc=='6': return "Split" if du in ['2','3','4','5','6'] else "Hit"
-        if pc=='7': return "Split" if du in ['2','3','4','5','6','7','8'] else "Hit"
-        if pc=='9': return "Split" if du in ['2','3','4','5','6','8','9'] else "Stand"
-        if pc=='4': return "Split" if du in ['5','6'] else "Hit"
-        if pc=='10': return "Stand"
-    if soft:
-        if total>=19: return "Stand"
-        if total==18: return "Stand" if du not in ['9','10','A'] else "Hit"
-        return "Hit"
-    if total>=17: return "Stand"
-    if 13<=total<=16: return "Stand" if du in ['2','3','4','5','6'] else "Hit"
-    if total==12: return "Stand" if du in ['4','5','6'] else "Hit"
-    if total<=11: return "Hit"
-    return "Stand"
+    elif rec.lower().startswith("double"): color="
