@@ -14,11 +14,11 @@ def card_value(c):
         return 11
     return int(c)
 
-def calculate_hand(cards_str):
+def best_hand_value(cards_str):
     cards = cards_str.split()
     total = sum(card_value(c) for c in cards)
     aces = cards.count("A")
-    while total > 21 and aces > 0:
+    while total > 21 and aces:
         total -= 10
         aces -= 1
     return total
@@ -33,32 +33,38 @@ def running_count():
         if c in ["2","3","4","5","6"]:
             count += 1
         elif c in ["10","A"]:
-            count -=1
+            count -= 1
     return count
 
-# --- Keypad HTML/CSS ---
+def true_count(running, decks):
+    return running / decks if decks else running
+
+def expected_value(player_total, dealer_up):
+    if player_total > 21:
+        return -1.0
+    if player_total >= 17:
+        return 0.5
+    if dealer_up:
+        return 0.2
+    return 0.0
+
+# --- Keypad Function ---
 def card_keypad(field_name, label):
     st.markdown(f"### {label}")
     st.markdown(f"<div style='border:1px solid white; padding:6px; border-radius:6px; min-height:40px;'>{st.session_state[field_name]}</div>", unsafe_allow_html=True)
 
-    buttons = ["2","3","4","5","6","7","8","9","10","A","Delete","Enter"]
-    html_buttons = "<div style='display:grid; grid-template-columns:repeat(4,1fr); gap:1.5mm;'>"
-    for b in buttons:
-        html_buttons += f"""<button onclick="fetch('/_stcore', {{method:'POST', body:JSON.stringify({{'button':'{field_name}_{b}'}})}})" 
-        style='padding:10px; font-size:16px; border-radius:6px; border:1px solid black; background-color:white; color:black;'>{b}</button>"""
-    html_buttons += "</div>"
-    st.markdown(html_buttons, unsafe_allow_html=True)
-
-    # Capture button presses
-    for b in buttons:
-        key = f"{field_name}_{b}"
-        if st.button(key, key=key):
-            if b=="Delete":
+    keys = ["2","3","4","5","6","7","8","9","10","A","Delete","Enter"]
+    cols = st.columns(4)
+    i=0
+    for k in keys:
+        if cols[i%4].button(k, key=f"{field_name}_{k}"):
+            if k=="Delete":
                 st.session_state[field_name] = " ".join(st.session_state[field_name].split()[:-1])
-            elif b=="Enter":
+            elif k=="Enter":
                 commit_cards(st.session_state[field_name])
             else:
-                st.session_state[field_name] += f"{b} "
+                st.session_state[field_name] += f"{k} "
+        i+=1
 
 # --- Header ---
 st.markdown("<h1 style='text-align:center; font-size:125%;'>Blackjack Assistant</h1>", unsafe_allow_html=True)
@@ -71,7 +77,7 @@ card_keypad("dealer", "Dealer cards (up, down, drawn)")
 # --- Action Buttons ---
 cols_action = st.columns(3)
 if cols_action[0].button("Calculate"):
-    player_total = calculate_hand(st.session_state["player"])
+    player_total = best_hand_value(st.session_state["player"])
     dealer_up = st.session_state["dealer"].split()[0] if st.session_state["dealer"] else None
     if player_total > 21:
         st.session_state["action"] = "Bust"
@@ -99,9 +105,15 @@ if cols_action[2].button("New Shoe"):
 # --- Count Info ---
 with st.expander("Count Info"):
     decks = st.number_input("Number of decks", min_value=1, value=8, step=1)
-    st.markdown(f"**Running Count:** {running_count()}")
-    total_cards = decks*52
-    penetration = len(st.session_state.shoe_cards)/total_cards
+    rc = running_count()
+    tc = true_count(rc, decks)
+    player_total = best_hand_value(st.session_state["player"])
+    dealer_up = st.session_state["dealer"].split()[0] if st.session_state["dealer"] else None
+    ev = expected_value(player_total, dealer_up)
+    st.markdown(f"**Expected Value (EV):** {ev:.2f}")
+    st.markdown(f"**True Count:** {tc:.2f}")
+    st.markdown(f"**Running Count:** {rc}")
+    penetration = len(st.session_state.shoe_cards)/(decks*52)
     st.markdown(f"**Penetration:** {penetration:.2%}")
 
 # --- Display Action ---
