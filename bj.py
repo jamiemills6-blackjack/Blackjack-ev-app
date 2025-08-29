@@ -1,4 +1,4 @@
-# bj.py -- Blackjack Assistant with HTML/JS keypad
+# bj.py -- Blackjack Assistant with real-time keypad
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -9,7 +9,7 @@ defaults = {
     "shoe": [], "pending_player": [], "pending_others": [], "pending_dealer": [],
     "active_box": "player", "running_count":0, "true_count":0.0,
     "penetration":0.0, "ev":0.0, "recommendation":"", "_last_committed_player":[],
-    "num_decks":8, "last_key": None
+    "num_decks":8, "last_key": ""
 }
 for key, val in defaults.items():
     if key not in st.session_state:
@@ -59,31 +59,28 @@ st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
 # ---------------------------
-# HTML/JS Keypad embedded
+# Hidden input for capturing JS key presses
+# ---------------------------
+st.session_state.last_key = st.text_input("hidden_key_capture", value="", key="hidden_input", label_visibility="collapsed")
+
+# ---------------------------
+# HTML/JS Keypad embedded and centered
 # ---------------------------
 keys = ['2','3','4','5','6','7','8','9','10','A','Delete','Enter']
-keypad_html = "<div style='display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; max-width:300px;'>"
+keypad_html = "<div style='display:flex; justify-content:center; margin-bottom:8px;'><div style='display:grid; grid-template-columns: repeat(4, 60px); gap:6px;'>"
 for k in keys + ['','','','']:  # pad to 16 cells
     if k:
-        keypad_html += f"<button onclick=\"window.parent.postMessage({{'key':'{k}'}}, '*')\" style='padding:12px; font-size:18px; border-radius:8px; width:100%;'>{k}</button>"
+        keypad_html += f"<button onclick=\"document.getElementById('hidden_input').value='{k}';document.getElementById('hidden_input').dispatchEvent(new Event('change'))\" style='padding:12px; font-size:18px; border-radius:8px;'>{k}</button>"
     else:
         keypad_html += "<div>&nbsp;</div>"
-keypad_html += "</div>"
-components.html(keypad_html, height=300)
+keypad_html += "</div></div>"
+components.html(keypad_html, height=320)
 
 # ---------------------------
-# Capture key presses via JS
+# Handle key press
 # ---------------------------
-from streamlit.runtime.scriptrunner import add_script_run_ctx
-import json
-
-if "key_events" not in st.session_state:
-    st.session_state.key_events = []
-
-# JS messages are captured as a temporary session state variable
-if st.session_state.get("last_key"):
-    key = st.session_state.last_key
-    st.session_state.last_key = None
+key = st.session_state.last_key
+if key:
     active = st.session_state.active_box
     pending_map = {
         "player": st.session_state.pending_player,
@@ -98,18 +95,20 @@ if st.session_state.get("last_key"):
             st.session_state.shoe.extend(pending)
             if active=="player": st.session_state._last_committed_player = pending.copy()
             pending.clear()
+        # cycle active box
         if active=="player": st.session_state.active_box="other"
         elif active=="other": st.session_state.active_box="dealer"
         else: st.session_state.active_box="player"
     else:
         pending.append(key)
+    # reset hidden input
+    st.session_state.last_key = ""
 
 # ---------------------------
-# Action Buttons
+# Action Buttons directly below keypad
 # ---------------------------
-c1,c2,c3 = st.columns(3)
-
-if c1.button("Calculate", key="btn_calculate"):
+c1,c2,c3 = st.columns([1,1,1])
+if c1.button("Calculate"):
     combined = st.session_state.shoe + st.session_state.pending_player + st.session_state.pending_others + st.session_state.pending_dealer
     running = compute_running_count_from_cards(combined)
     decks = max(1,int(st.session_state.num_decks))
@@ -128,7 +127,7 @@ if c1.button("Calculate", key="btn_calculate"):
     st.session_state.ev = round(ev_proxy,5)
     st.session_state.recommendation = rec
 
-if c2.button("Next Hand", key="btn_next_hand"):
+if c2.button("Next Hand"):
     for box in ["pending_player","pending_others","pending_dealer"]:
         pending = st.session_state[box]
         if pending:
@@ -137,7 +136,7 @@ if c2.button("Next Hand", key="btn_next_hand"):
             pending.clear()
     st.session_state.active_box="player"
 
-if c3.button("New Shoe", key="btn_new_shoe"):
+if c3.button("New Shoe"):
     for k in ["shoe","pending_player","pending_others","pending_dealer"]:
         st.session_state[k]=[]
     st.session_state.running_count=0
